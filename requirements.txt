@@ -1,13 +1,10 @@
-# backend/requirements.txt
-
-# Core Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+# pydantic==2.5.0
+# pydantic-settings==2.1.0
 
 # LLM & AI (local — no cloud APIs)
-ollama==0.1.7
+ollama
 chromadb==0.4.18          # legacy fallback; primary store is Qdrant
 
 # Vector Store (primary)
@@ -19,13 +16,13 @@ tantivy>=0.20.0
 
 # Reranking & Embeddings (local)
 sentence-transformers>=2.3.0
-torch>=2.0.0               # CPU-only is fine; swap "torch" for "torch --index-url ...cu118" for GPU
+# torch            # CPU-only is fine; swap "torch" for "torch --index-url https://download.pytorch.org/whl/cu130" depedning on CUDA version if GPU is available
 
 # Web Crawling & HTTP
 requests==2.31.0
 beautifulsoup4==4.12.2
 aiohttp==3.9.1
-lxml==4.9.3
+# lxml==4.9.3
 trafilatura>=1.6.0          # Clean content extraction (better than BS4 alone)
 # scrapy>=2.11.0            # Optional: swap async crawler for Scrapy in high-volume setups
 
@@ -42,8 +39,8 @@ langdetect>=1.0.9
 diskcache>=5.6.0
 
 # Data Processing
-pandas==2.1.4
-numpy==1.25.2
+pandas
+numpy
 
 # Utilities
 python-dotenv==1.0.0

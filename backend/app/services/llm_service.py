@@ -62,7 +62,7 @@ class LLMService:
 
         def _sync_call() -> list[float]:
             response = client.embeddings(model=self.embedding_model, prompt=truncated)
-            return response["embedding"]
+            return response.embedding
 
         result = await asyncio.to_thread(_sync_call)
         cache_manager.set_embedding(text, result)

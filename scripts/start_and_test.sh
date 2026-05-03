@@ -1,5 +1,5 @@
 #!/bin/bash
-# backend/scripts/start_and_test.sh
+# scripts/start_and_test.sh
 
 set -e
 
@@ -13,9 +13,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Check if we're in the backend directory
+# Check if we're in the project root directory
 if [ ! -f "requirements.txt" ]; then
-    echo -e "${RED}❌ Please run this script from the backend directory${NC}"
+    echo -e "${RED}❌ Please run this script from the project root directory${NC}"
     exit 1
 fi
 
@@ -64,17 +64,17 @@ echo -e "${GREEN}✅ Ollama setup complete${NC}"
 echo -e "${BLUE}🏗️  Step 3: Setting up project structure...${NC}"
 
 # Create necessary directories
-mkdir -p app/data/{vectorstore,documents,reports,cache,memory}
-mkdir -p logs
+mkdir -p backend/app/data/{vectorstore,documents,reports,cache,memory}
+mkdir -p backend/logs
 
 # Copy environment file if it doesn't exist
-if [ ! -f ".env" ]; then
-    if [ -f ".env.example" ]; then
-        cp .env.example .env
+if [ ! -f "backend/.env" ]; then
+    if [ -f "backend/.env.example" ]; then
+        cp backend/.env.example backend/.env
         echo "📝 Created .env file from .env.example"
     else
         echo "📝 Creating default .env file..."
-        cat > .env << EOF
+        cat > backend/.env << EOF
 # LLM Configuration
 OLLAMA_BASE_URL=http://localhost:11434
 DEFAULT_MODEL=llama3.1:8b
@@ -106,10 +106,10 @@ echo -e "${GREEN}✅ Project structure ready${NC}"
 echo -e "${BLUE}🚀 Step 4: Starting the backend server...${NC}"
 
 # Start the server in the background
-cd app
+cd backend/app
 python main.py &
 SERVER_PID=$!
-cd ..
+cd ../..
 
 # Wait for server to start
 echo "Waiting for server to start..."
@@ -196,7 +196,7 @@ echo '  -H "Content-Type: application/json" \'
 echo '  -d '"'"'{"topic": "quantum computing", "max_sources": 5}'"'"
 echo ""
 echo -e "${YELLOW}🛑 To stop the server: kill $SERVER_PID${NC}"
-echo -e "${BLUE}📋 Server logs are available in logs/research_agent.log${NC}"
+echo -e "${BLUE}📋 Server logs are available in backend/logs/research_agent.log${NC}"
 echo ""
 echo -e "${GREEN}Happy researching! 🔬✨${NC}"
 

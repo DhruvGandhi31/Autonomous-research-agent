@@ -92,7 +92,7 @@ mkdir -p logs
 
 ### 4. Start the Server
 ```bash
-cd app
+cd backend/app
 python main.py
 ```
 
