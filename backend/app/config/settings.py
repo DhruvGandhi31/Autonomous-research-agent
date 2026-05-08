@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     user_agent: str = "ResearchAgent/1.0"
     max_requests_per_minute: int = 60
 
+    # CORS
+    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
     # External APIs
     serpapi_key: str = ""
 

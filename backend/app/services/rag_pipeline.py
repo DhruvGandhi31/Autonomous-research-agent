@@ -192,7 +192,11 @@ def _mmr_select(
     if len(docs) <= top_k:
         return docs
 
-    scores = np.array([d.rrf_score for d in docs], dtype=float)
+    # Prefer the cross-encoder rerank score when available; fall back to RRF.
+    scores = np.array(
+        [d.metadata.get("rerank_score", d.rrf_score) for d in docs],
+        dtype=float,
+    )
     max_score = scores.max()
     if max_score > 0:
         scores /= max_score

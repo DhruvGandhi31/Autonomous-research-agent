@@ -61,7 +61,7 @@ async def _stream_ollama(messages: list[dict]) -> AsyncGenerator[str, None]:
             for chunk in client.chat(
                 model=settings.default_model, messages=messages, stream=True
             ):
-                content = chunk["message"]["content"]
+                content = chunk.message.content
                 if content:
                     loop.call_soon_threadsafe(queue.put_nowait, content)
         except Exception as e:
@@ -76,7 +76,11 @@ async def _stream_ollama(messages: list[dict]) -> AsyncGenerator[str, None]:
     thread.start()
 
     while True:
-        item = await queue.get()
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=120.0)
+        except asyncio.TimeoutError:
+            logger.warning("LLM stream timed out after 120s")
+            break
         if item is None:
             break
         yield item

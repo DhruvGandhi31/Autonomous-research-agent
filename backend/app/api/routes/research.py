@@ -89,7 +89,7 @@ async def start_research(
 @router.get("/status/{research_id}")
 async def get_research_status(research_id: str):
     status = await research_agent.get_research_status(research_id)
-    if "error" in status and status["error"] == "Research session not found":
+    if status.get("not_found"):
         raise HTTPException(status_code=404, detail="Research session not found")
     return status
 

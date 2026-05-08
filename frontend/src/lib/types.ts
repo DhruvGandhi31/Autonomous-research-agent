@@ -12,8 +12,8 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   attachments: FileAttachment[];
-  research_id?: string;
-  sources?: Citation[];
+  research_id?: string | null;
+  sources?: Citation[] | null;
 }
 
 export interface ChatSession {

@@ -1,11 +1,20 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 
 from services.llm_service import llm_service
 from loguru import logger
+
+# LLMs often wrap JSON output in markdown code fences — strip them before parsing.
+_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+
+
+def _extract_json(text: str) -> str:
+    m = _JSON_FENCE_RE.search(text)
+    return m.group(1).strip() if m else text.strip()
 
 @dataclass
 class ResearchTask:
@@ -66,9 +75,9 @@ Be specific and actionable. Focus on finding authoritative sources and diverse p
                 temperature=0.3  # Lower temperature for more consistent planning
             )
             
-            # Parse the response
+            # Parse the response — strip markdown fences LLMs often add
             try:
-                plan_data = json.loads(plan_response)
+                plan_data = json.loads(_extract_json(plan_response))
             except json.JSONDecodeError:
                 # If JSON parsing fails, create a fallback plan
                 logger.warning("LLM response was not valid JSON, creating fallback plan")
@@ -86,27 +95,42 @@ Be specific and actionable. Focus on finding authoritative sources and diverse p
             return self._create_fallback_plan(topic, requirements)
     
     async def _structure_plan(self, plan_data: Dict[str, Any], topic: str) -> Dict[str, Any]:
-        """Structure the plan data and assign task IDs"""
+        """Assign real UUIDs to tasks and remap LLM-emitted dependency references."""
         try:
-            tasks = []
-            task_id_map = {}
-            
-            for i, task_info in enumerate(plan_data.get("tasks", [])):
+            raw_tasks = plan_data.get("tasks", [])
+
+            # First pass: build a mapping from every possible LLM reference
+            # (integer index, string index, task name) → real UUID.
+            task_id_map: Dict[Any, str] = {}
+            for i, task_info in enumerate(raw_tasks):
                 task_id = f"task_{uuid.uuid4().hex[:8]}"
-                task_id_map[i] = task_id
-                
+                task_id_map[i] = task_id          # LLM may emit integer 0, 1, 2 …
+                task_id_map[str(i)] = task_id     # … or string "0", "1", "2" …
+                name = task_info.get("name", "")
+                if name:
+                    task_id_map[name] = task_id   # … or the task's own name
+
+            # Second pass: build ResearchTask objects with remapped dependencies.
+            tasks: List[ResearchTask] = []
+            for i, task_info in enumerate(raw_tasks):
+                raw_deps = task_info.get("dependencies") or []
+                remapped_deps = [
+                    task_id_map[dep]
+                    for dep in raw_deps
+                    if dep in task_id_map
+                ]
                 task = ResearchTask(
-                    id=task_id,
-                    name=task_info.get("name", f"Task {i+1}"),
+                    id=task_id_map[i],
+                    name=task_info.get("name", f"Task {i + 1}"),
                     description=task_info.get("description", ""),
                     tool=task_info.get("tool", "web_search"),
                     parameters=task_info.get("parameters", {"query": topic}),
                     priority=task_info.get("priority", 5),
-                    dependencies=task_info.get("dependencies", []),
-                    estimated_time=task_info.get("estimated_time", 5)
+                    dependencies=remapped_deps,
+                    estimated_time=task_info.get("estimated_time", 5),
                 )
                 tasks.append(task)
-            
+
             return {
                 "research_id": f"research_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 "topic": topic,
@@ -116,9 +140,9 @@ Be specific and actionable. Focus on finding authoritative sources and diverse p
                 "expected_outcomes": plan_data.get("expected_outcomes", ["Comprehensive research report"]),
                 "success_criteria": plan_data.get("success_criteria", ["Authoritative sources found", "Key questions answered"]),
                 "created_at": datetime.now().isoformat(),
-                "estimated_total_time": sum(task.estimated_time for task in tasks)
+                "estimated_total_time": sum(t.estimated_time for t in tasks),
             }
-            
+
         except Exception as e:
             logger.error(f"Error structuring plan: {e}")
             return self._create_fallback_plan(topic, {})

@@ -78,13 +78,13 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
 
-    for (const file of files) {
-      const id = crypto.randomUUID();
-      setPendingFiles((prev) => [
-        ...prev,
-        { id, file, status: "uploading" },
-      ]);
+    const entries = files.map((file) => ({ id: crypto.randomUUID(), file }));
+    setPendingFiles((prev) => [
+      ...prev,
+      ...entries.map(({ id, file }) => ({ id, file, status: "uploading" as const })),
+    ]);
 
+    const uploadOne = async ({ id, file }: { id: string; file: File }) => {
       try {
         let uploaded;
         if (isImageFile(file.name)) {
@@ -95,11 +95,11 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
           setPendingFiles((prev) =>
             prev.map((f) =>
               f.id === id
-                ? { ...f, status: "error", error: "Unsupported file type" }
+                ? { ...f, status: "error" as const, error: "Unsupported file type" }
                 : f
             )
           );
-          continue;
+          return;
         }
 
         const attachment: FileAttachment = {
@@ -111,7 +111,7 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
         };
         setPendingFiles((prev) =>
           prev.map((f) =>
-            f.id === id ? { ...f, status: "ready", attachment } : f
+            f.id === id ? { ...f, status: "ready" as const, attachment } : f
           )
         );
       } catch (err) {
@@ -120,14 +120,16 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
             f.id === id
               ? {
                   ...f,
-                  status: "error",
+                  status: "error" as const,
                   error: err instanceof Error ? err.message : "Upload failed",
                 }
               : f
           )
         );
       }
-    }
+    };
+
+    await Promise.all(entries.map(uploadOne));
   };
 
   const removeFile = (id: string) => {

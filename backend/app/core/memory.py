@@ -103,21 +103,24 @@ class MemoryManager:
         return plan_item.content if plan_item else None
     
     async def get_task_results(self, research_id: str) -> List[Dict[str, Any]]:
-        """Get all task results for a research session"""
+        """Get all task results for a research session."""
         results = []
+        cached_ids = set()
         for item_id, item in self.memory_items.items():
-            if (item.research_id == research_id and 
-                item.type == "task_result"):
+            if item.research_id == research_id and item.type == "task_result":
                 results.append(item.content)
-        
-        # Also check disk if not in memory
-        memory_files = list(self.memory_dir.glob(f"{research_id}_*_result.json"))
+                cached_ids.add(item_id)
+
+        # Also load any results that landed on disk but are not yet in cache.
+        memory_files = await asyncio.to_thread(
+            lambda: list(self.memory_dir.glob(f"{research_id}_*_result.json"))
+        )
         for file_path in memory_files:
-            if file_path.stem not in [item.id for item in self.memory_items.values()]:
+            if file_path.stem not in cached_ids:
                 item = await self._load_memory_item(file_path.stem)
                 if item:
                     results.append(item.content)
-        
+
         return results
     
     async def get_research_summary(self, research_id: str) -> Dict[str, Any]:
@@ -136,61 +139,60 @@ class MemoryManager:
         }
     
     async def _save_memory_item(self, item: MemoryItem):
-        """Save memory item to disk and cache"""
+        """Persist a memory item to the in-memory cache and disk (non-blocking)."""
         try:
-            # Store in memory cache
             self.memory_items[item.id] = item
-            
-            # Save to disk
+
             file_path = self.memory_dir / f"{item.id}.json"
             item_dict = asdict(item)
-            item_dict['timestamp'] = item.timestamp.isoformat()
-            
-            with open(file_path, 'w') as f:
-                json.dump(item_dict, f, indent=2)
-                
+            item_dict["timestamp"] = item.timestamp.isoformat()
+
+            def _write():
+                with open(file_path, "w") as f:
+                    json.dump(item_dict, f, indent=2)
+
+            await asyncio.to_thread(_write)
         except Exception as e:
             logger.error(f"Error saving memory item {item.id}: {e}")
             raise
-    
+
     async def _load_memory_item(self, item_id: str) -> Optional[MemoryItem]:
-        """Load memory item from disk"""
+        """Load a memory item from disk (non-blocking)."""
         try:
             file_path = self.memory_dir / f"{item_id}.json"
             if not file_path.exists():
                 return None
-            
-            with open(file_path, 'r') as f:
-                item_dict = json.load(f)
-            
-            # Convert timestamp back to datetime
-            item_dict['timestamp'] = datetime.fromisoformat(item_dict['timestamp'])
-            
+
+            def _read():
+                with open(file_path, "r") as f:
+                    return json.load(f)
+
+            item_dict = await asyncio.to_thread(_read)
+            item_dict["timestamp"] = datetime.fromisoformat(item_dict["timestamp"])
             memory_item = MemoryItem(**item_dict)
             self.memory_items[item_id] = memory_item
             return memory_item
-            
         except Exception as e:
             logger.error(f"Error loading memory item {item_id}: {e}")
             return None
     
     async def clear_research_session(self, research_id: str):
-        """Clear all memory for a research session"""
-        # Remove from active sessions
-        if research_id in self.active_sessions:
-            del self.active_sessions[research_id]
-        
-        # Remove from memory cache
-        to_remove = [item_id for item_id, item in self.memory_items.items() 
-                    if item.research_id == research_id]
+        """Delete all in-memory and on-disk data for a research session."""
+        self.active_sessions.pop(research_id, None)
+
+        to_remove = [
+            item_id
+            for item_id, item in self.memory_items.items()
+            if item.research_id == research_id
+        ]
         for item_id in to_remove:
             del self.memory_items[item_id]
-        
-        # Remove files from disk
-        memory_files = list(self.memory_dir.glob(f"{research_id}_*.json"))
-        for file_path in memory_files:
-            file_path.unlink()
-        
+
+        def _delete_files():
+            for file_path in self.memory_dir.glob(f"{research_id}_*.json"):
+                file_path.unlink(missing_ok=True)
+
+        await asyncio.to_thread(_delete_files)
         logger.info(f"Cleared memory for research session: {research_id}")
 
 # Global memory manager instance

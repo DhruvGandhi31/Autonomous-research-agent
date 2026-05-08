@@ -38,7 +38,10 @@ class AcademicSearchTool(BaseTool):
 
     async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
         query = parameters.get("query", "").strip()
-        sources = parameters.get("sources", ["arxiv", "semantic_scholar", "wikipedia", "google_scholar"])
+        default_sources = ["arxiv", "semantic_scholar", "wikipedia"]
+        if settings.serpapi_key:
+            default_sources.append("google_scholar")
+        sources = parameters.get("sources", default_sources)
         max_results = int(parameters.get("max_results", 5))
 
         if not query:

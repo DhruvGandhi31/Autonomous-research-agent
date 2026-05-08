@@ -156,7 +156,8 @@ class DocumentProcessor:
 
     def _clean_text(self, text: str) -> str:
         text = re.sub(r"https?://\S+", "", text)       # Strip URLs
-        text = re.sub(r"\[.*?\]", "", text)             # Strip bracket refs
+        text = re.sub(r"\[\d+\]", "", text)              # Strip numeric citation refs [1], [2]
+        text = re.sub(r"\[edit\]", "", text, flags=re.IGNORECASE)  # Strip wiki edit links
         text = re.sub(r"\s+", " ", text)                # Normalise whitespace
         return text.strip()
 

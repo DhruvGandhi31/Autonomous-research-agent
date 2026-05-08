@@ -358,7 +358,7 @@ Structure:
     async def get_research_status(self, research_id: str) -> Dict[str, Any]:
         context = await self.memory.get_research_context(research_id)
         if not context:
-            return {"error": "Research session not found"}
+            return {"not_found": True}
 
         plan = await self.memory.get_research_plan(research_id)
         task_results = await self.memory.get_task_results(research_id)
@@ -383,7 +383,7 @@ Structure:
     async def get_research_results(self, research_id: str) -> Dict[str, Any]:
         context = await self.memory.get_research_context(research_id)
         if not context:
-            return {"error": "Research session not found"}
+            return {"not_found": True}
 
         # Load the final report insight
         report: Optional[str] = None
@@ -392,7 +392,10 @@ Structure:
         verified: bool = False
         critique: Optional[str] = None
 
-        for f in self.memory.memory_dir.glob(f"{research_id}_insight_*.json"):
+        insight_files = await asyncio.to_thread(
+            lambda: list(self.memory.memory_dir.glob(f"{research_id}_insight_*.json"))
+        )
+        for f in insight_files:
             item = await self.memory._load_memory_item(f.stem)
             if item and item.content.get("type") == "final_report":
                 report = item.content.get("report")
