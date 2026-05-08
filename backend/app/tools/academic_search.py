@@ -12,6 +12,7 @@ from urllib.parse import quote_plus
 import aiohttp
 from loguru import logger
 
+from config.settings import settings
 from tools.base_tool import BaseTool, ToolResult
 
 _ARXIV_NS = {
@@ -37,7 +38,7 @@ class AcademicSearchTool(BaseTool):
 
     async def execute(self, parameters: Dict[str, Any]) -> ToolResult:
         query = parameters.get("query", "").strip()
-        sources = parameters.get("sources", ["arxiv", "semantic_scholar", "wikipedia"])
+        sources = parameters.get("sources", ["arxiv", "semantic_scholar", "wikipedia", "google_scholar"])
         max_results = int(parameters.get("max_results", 5))
 
         if not query:
@@ -52,6 +53,8 @@ class AcademicSearchTool(BaseTool):
             tasks.append(self._search_semantic_scholar(query, max_results))
         if "wikipedia" in sources:
             tasks.append(self._search_wikipedia(query, min(2, max_results)))
+        if "google_scholar" in sources and settings.serpapi_key:
+            tasks.append(self._search_google_scholar(query, max_results))
 
         gathered = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -97,16 +100,24 @@ class AcademicSearchTool(BaseTool):
             f"&start=0&max_results={max_results}"
             f"&sortBy=relevance&sortOrder=descending"
         )
-        try:
-            async with self.session.get(url) as resp:
-                if resp.status != 200:
-                    logger.warning(f"arXiv returned {resp.status}")
-                    return []
-                text = await resp.text()
-            return self._parse_arxiv(text)
-        except Exception as e:
-            logger.warning(f"arXiv search error: {e}")
-            return []
+        for attempt in range(3):
+            try:
+                async with self.session.get(url) as resp:
+                    if resp.status == 429:
+                        wait = int(resp.headers.get("Retry-After", 5 * (attempt + 1)))
+                        logger.warning(f"arXiv rate-limited (attempt {attempt + 1}/3); retrying in {wait}s")
+                        await asyncio.sleep(wait)
+                        continue
+                    if resp.status != 200:
+                        logger.warning(f"arXiv returned {resp.status}")
+                        return []
+                    text = await resp.text()
+                    return self._parse_arxiv(text)
+            except Exception as e:
+                logger.warning(f"arXiv error (attempt {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    await asyncio.sleep(3)  # arXiv docs recommend 3s between calls
+        return []
 
     def _parse_arxiv(self, xml_text: str) -> List[Dict[str, Any]]:
         try:
@@ -214,6 +225,47 @@ class AcademicSearchTool(BaseTool):
         return results
 
     # ------------------------------------------------------------------ #
+    #  Google Scholar (via SerpApi)                                        #
+    # ------------------------------------------------------------------ #
+
+    async def _search_google_scholar(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        params = {
+            "engine": "google_scholar",
+            "q": query,
+            "num": min(max_results, 10),  # SerpApi caps at 20; 10 is a safe ceiling
+            "api_key": settings.serpapi_key,
+            "as_vis": "1",               # exclude citation-only stub entries
+        }
+        try:
+            async with self.session.get("https://serpapi.com/search", params=params) as resp:
+                if resp.status != 200:
+                    logger.warning(f"SerpApi returned {resp.status}")
+                    return []
+                data = await resp.json()
+        except Exception as e:
+            logger.warning(f"Google Scholar search error: {e}")
+            return []
+
+        results = []
+        for item in data.get("organic_results", []):
+            cited_by = (item.get("inline_links") or {}).get("cited_by", {}).get("total", 0) or 0
+            # credibility baseline 0.65, scales with citation count up to 0.95
+            credibility = min(0.95, 0.65 + min(cited_by / 500, 1.0) * 0.30)
+            pub_info = item.get("publication_info") or {}
+            results.append({
+                "title": item.get("title", ""),
+                "url": item.get("link", ""),
+                "snippet": (item.get("snippet") or "")[:600],
+                "authors": [a.get("name", "") for a in pub_info.get("authors", [])[:3]],
+                "published": pub_info.get("summary", ""),
+                "citations": cited_by,
+                "source": "Google Scholar",
+                "type": "academic_paper",
+                "credibility_score": credibility,
+            })
+        return results
+
+    # ------------------------------------------------------------------ #
     #  Helpers                                                             #
     # ------------------------------------------------------------------ #
 
@@ -237,9 +289,9 @@ class AcademicSearchTool(BaseTool):
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["arxiv", "semantic_scholar", "wikipedia"],
+                        "enum": ["arxiv", "semantic_scholar", "wikipedia", "google_scholar"],
                     },
-                    "default": ["arxiv", "semantic_scholar", "wikipedia"],
+                    "default": ["arxiv", "semantic_scholar", "wikipedia", "google_scholar"],
                 },
                 "max_results": {
                     "type": "integer",

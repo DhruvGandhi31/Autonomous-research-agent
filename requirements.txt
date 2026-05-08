@@ -31,6 +31,10 @@ pypdf2==3.0.1
 python-docx==1.1.0
 python-multipart==0.0.6
 
+# Image Analysis (OCR — also requires system Tesseract: https://github.com/UB-Mannheim/tesseract/wiki)
+Pillow>=10.0.0
+pytesseract>=0.3.10
+
 # NLP
 spacy>=3.7.0               # After install: python -m spacy download en_core_web_sm
 langdetect>=1.0.9

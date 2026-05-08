@@ -288,7 +288,14 @@ class ResearchAgent:
             logger.warning(f"RAG pipeline failed, falling back to direct synthesis: {e}")
 
         # Fallback: direct LLM synthesis from task results
-        return {"answer": await self._fallback_synthesize(research_id, topic)}
+        fallback_answer = await self._fallback_synthesize(research_id, topic)
+        return {
+            "answer": fallback_answer,
+            "citations": [],
+            "confidence": 0.0,
+            "verified": False,
+            "critique": None,
+        }
 
     async def _fallback_synthesize(self, research_id: str, topic: str) -> str:
         """Simple LLM synthesis without retrieval — used when RAG has no data."""

@@ -19,6 +19,8 @@ from tools.summarizer import summarizer_tool
 from tools.academic_search import academic_search_tool
 from services.llm_service import llm_service
 from api.routes.research import router as research_router
+from api.routes.chat import router as chat_router
+from api.routes.upload import router as upload_router
 from loguru import logger
 
 # Configure logging
@@ -43,7 +45,7 @@ async def lifespan(app: FastAPI):
     
     # Create necessary directories
     data_dir = Path("./app/data")
-    for subdir in ["vectorstore", "documents", "reports", "cache", "memory"]:
+    for subdir in ["vectorstore", "documents", "reports", "cache", "memory", "chat"]:
         (data_dir / subdir).mkdir(parents=True, exist_ok=True)
     
     # Create logs directory
@@ -106,6 +108,8 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(research_router, prefix="/api/research", tags=["research"])
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+app.include_router(upload_router, prefix="/api/upload", tags=["upload"])
 
 @app.get("/")
 async def root():

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     user_agent: str = "ResearchAgent/1.0"
     max_requests_per_minute: int = 60
 
+    # External APIs
+    serpapi_key: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"

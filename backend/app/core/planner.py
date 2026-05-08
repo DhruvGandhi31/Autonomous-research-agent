@@ -1,9 +1,8 @@
-# backend/app/core/planner.py
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from services.llm_service import llm_service
 from loguru import logger
@@ -16,7 +15,7 @@ class ResearchTask:
     tool: str
     parameters: Dict[str, Any]
     priority: int
-    dependencies: List[str] = None
+    dependencies: List[str] = field(default_factory=list)
     estimated_time: int = 5  # minutes
     status: str = "pending"
 
@@ -152,17 +151,8 @@ Be specific and actionable. Focus on finding authoritative sources and diverse p
             "estimated_total_time": 5
         }
     
-    async def update_task_status(self, research_id: str, task_id: str, status: str, result: Dict[str, Any] = None):
-        """Update the status of a specific task"""
-        try:
-            # This would update the task in the stored plan
-            # For now, we'll log the update
-            logger.info(f"Task {task_id} status updated to {status} for research {research_id}")
-            
-            if result:
-                await self.store_task_result(research_id, task_id, result)
-                
-        except Exception as e:
-            logger.error(f"Error updating task status: {e}")
+    async def update_task_status(self, research_id: str, task_id: str, status: str, result: Optional[Dict[str, Any]] = None):
+        """Log a task status change. Actual persistence is handled by MemoryManager in agent.py."""
+        logger.info(f"Task {task_id} → {status} (research {research_id})")
 
 task_planner = TaskPlanner()

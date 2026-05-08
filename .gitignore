@@ -1,11 +1,57 @@
+# ── Secrets & environment ─────────────────────────────────────────
 .env
+.env.local
+.env.*.local
+*.env
+
+# ── Python ────────────────────────────────────────────────────────
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
 dist/
 build/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Test / coverage ───────────────────────────────────────────────
 .pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# ── Data directories (generated at runtime) ──────────────────────
+# Real data path when server starts from backend/app/ (see CLAUDE.md)
+backend/app/app/data/
+# Legacy path (kept for safety)
 backend/app/data/
 backend/logs/
+logs/
+
+# ── Frontend — Node.js ────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env.local
+frontend/.env.*.local
+
+# ── OS artifacts ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE / editor ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Logs ──────────────────────────────────────────────────────────
+*.log

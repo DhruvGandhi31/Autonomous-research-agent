@@ -1,0 +1,21 @@
+{
+  "id": "research_2ac5e887d927_context",
+  "type": "context",
+  "content": {
+    "topic": "string",
+    "requirements": {
+      "max_sources": 10,
+      "include_academic": true,
+      "include_analysis": true
+    },
+    "status": "complete",
+    "started_at": "2026-05-08T19:38:51.885335",
+    "research_id": "research_2ac5e887d927",
+    "completed_at": "2026-05-08T19:40:45.264542"
+  },
+  "research_id": "research_2ac5e887d927",
+  "timestamp": "2026-05-08T19:40:45.264549",
+  "metadata": {
+    "session_start": true
+  }
+}

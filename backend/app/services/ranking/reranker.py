@@ -55,6 +55,7 @@ class CrossEncoderReranker:
                 doc.metadata["rerank_score"] = float(score)
             docs.sort(key=lambda d: d.metadata.get("rerank_score", 0.0), reverse=True)
             return docs[:top_n]
+
         except Exception as e:
             logger.warning(f"Reranking failed, using original order: {e}")
             return docs[:top_n]
