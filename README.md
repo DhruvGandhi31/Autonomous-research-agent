@@ -6,6 +6,14 @@ An autonomous AI research assistant with a Perplexity-style chat interface. Runs
 
 ---
 
+## Screenshots
+
+<img src="docs/2.png" alt="Research Agent — Chat interface with welcome screen" width="100%">
+
+<img src="docs/1.png" alt="Research Agent — Research mode with cited report" width="100%">
+
+---
+
 ## Features
 
 - **Autonomous research pipeline** — plan → multi-source search → RAG synthesis → hallucination-guarded report
