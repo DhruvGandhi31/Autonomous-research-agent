@@ -9,11 +9,13 @@ An autonomous AI research assistant with a Perplexity-style chat interface. Runs
 ## Features
 
 - **Autonomous research pipeline** — plan → multi-source search → RAG synthesis → hallucination-guarded report
+- **Per-message tool selector** — choose Chat, Web Search, Academic, or Full Research per message via chips in the input area
+- **Session mode toggle** — switch any session between Chat and Research mode from the header
 - **Streaming chat** — token-by-token responses via Ollama
 - **Image analysis** — llava vision model + pytesseract OCR fallback
 - **Document upload** — PDF, DOCX, TXT extraction with full LLM context
 - **Persistent sessions** — chat history saved to disk
-- **Academic search** — arXiv, Semantic Scholar, Wikipedia, Google Scholar (SerpApi)
+- **Academic search** — arXiv (with 429 retry), Semantic Scholar, Wikipedia, Google Scholar (SerpApi, optional)
 - **Source citations** — inline `[N]` references with credibility scoring
 - **Dark-mode UI** — Next.js 14 + Tailwind CSS
 
@@ -109,6 +111,9 @@ CHROMA_PERSIST_DIRECTORY=./app/data/vectorstore
 API_HOST=0.0.0.0
 API_PORT=8000
 DEBUG=True
+
+# Optional — override allowed CORS origins (comma-separated or JSON list)
+# CORS_ORIGINS=["http://localhost:3000","https://your-domain.com"]
 
 # Optional — Google Scholar via SerpApi (https://serpapi.com)
 SERPAPI_KEY=your_key_here
@@ -246,16 +251,29 @@ Browser (localhost:3000)
             └─ diskcache (local files)   query · embedding · LLM caches
 ```
 
-**Research pipeline:**
+**Research pipeline (triggered by any non-Chat tool mode):**
 ```
-POST /api/research/start
-  1. TaskPlanner (LLM)   → JSON task list with dependencies
+User selects tool chip (Web / Academic / Full Research) → sends message
+  │
+POST /api/chat/sessions/{id}/messages
+  │  trigger_research: true, tool_preference: "web_search" | "academic_search" | ""
+  │
+  1. TaskPlanner (LLM)   → JSON task list  [tool_preference hint appended to prompt]
   2. Concurrent tasks    → web_search · academic_search · summarizer
   3. DocumentProcessor   → language filter → chunking → spaCy NER
   4. HybridRetriever     → Qdrant dense + tantivy BM25 → RRF fusion
   5. RAGPipeline         → HyDE → CrossEncoder rerank → MMR → LLM → self-critique
   6. MemoryManager       → persist report + citations + confidence
 ```
+
+**Frontend tool mode → backend mapping:**
+
+| Chip | `trigger_research` | `tool_preference` |
+|---|---|---|
+| 💬 Chat | `false` | `""` |
+| 🌐 Web Search | `true` | `"web_search"` |
+| 📚 Academic | `true` | `"academic_search"` |
+| 🔬 Full Research | `true` | `""` |
 
 ---
 
@@ -301,3 +319,4 @@ See the [`docs/`](./docs/) directory:
 - [`docs/backend.md`](./docs/backend.md) — every Python service, tool, and route
 - [`docs/frontend.md`](./docs/frontend.md) — every component, hook, and context
 - [`docs/api-reference.md`](./docs/api-reference.md) — complete HTTP API reference
+- [`docs/bug-fix.md`](./docs/bug-fix.md) — all 13 bug fixes with before/after code

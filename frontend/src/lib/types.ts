@@ -1,3 +1,5 @@
+export type ToolMode = "chat" | "web_search" | "academic" | "research";
+
 export interface FileAttachment {
   name: string;
   file_type: "image" | "document";

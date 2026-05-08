@@ -504,7 +504,8 @@ Rename a session (max 100 chars).
             "size": 204800
         }
     ],
-    "trigger_research": false
+    "trigger_research": false,
+    "tool_preference": ""
 }
 ```
 
@@ -512,7 +513,8 @@ Rename a session (max 100 chars).
 |---|---|---|---|
 | `content` | `string` | ✅ | User message text (1–32,000 chars) |
 | `attachments` | `array` | ❌ | Pre-uploaded file data |
-| `trigger_research` | `boolean` | ❌ | Force research mode for this message |
+| `trigger_research` | `boolean` | ❌ | Force research pipeline for this message |
+| `tool_preference` | `string` | ❌ | Hint to TaskPlanner: `"web_search"`, `"academic_search"`, or `""` (planner decides freely) |
 
 **SSE events — Chat mode** (`trigger_research: false` and session `mode: "chat"`)
 

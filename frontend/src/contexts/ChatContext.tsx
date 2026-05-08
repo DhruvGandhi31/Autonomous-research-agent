@@ -14,6 +14,7 @@ import type {
   ChatMessage,
   SessionListItem,
   FileAttachment,
+  ToolMode,
 } from "@/lib/types";
 import {
   createSession,
@@ -41,10 +42,18 @@ interface ChatContextValue {
   newChat: (mode?: "chat" | "research") => Promise<void>;
   removeSession: (id: string) => Promise<void>;
   setActiveSession: (session: ChatSession | null) => void;
-  send: (content: string, attachments?: FileAttachment[]) => Promise<void>;
+  send: (content: string, attachments?: FileAttachment[], toolMode?: ToolMode) => Promise<void>;
+  switchSessionMode: (mode: "chat" | "research") => void;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+
+const TOOL_CONFIG: Record<ToolMode, { triggerResearch: boolean; toolPreference: string }> = {
+  chat:       { triggerResearch: false, toolPreference: "" },
+  web_search: { triggerResearch: true,  toolPreference: "web_search" },
+  academic:   { triggerResearch: true,  toolPreference: "academic_search" },
+  research:   { triggerResearch: true,  toolPreference: "" },
+};
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
@@ -122,12 +131,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [activeSession, loadSessions]
   );
 
+  const switchSessionMode = useCallback((mode: "chat" | "research") => {
+    setActiveSession((prev) => (prev ? { ...prev, mode } : prev));
+  }, []);
+
   const send = useCallback(
-    async (content: string, attachments: FileAttachment[] = []) => {
+    async (content: string, attachments: FileAttachment[] = [], toolMode?: ToolMode) => {
       if (!activeSession) return;
 
       const sessionId = activeSession.id;
-      const isResearch = activeSession.mode === "research";
+      const resolvedMode: ToolMode = toolMode ?? (activeSession.mode === "research" ? "research" : "chat");
+      const { triggerResearch, toolPreference } = TOOL_CONFIG[resolvedMode];
 
       // Optimistically add user message
       const userMsg: ChatMessage = {
@@ -147,7 +161,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setStreaming({ sessionId, content: "" });
 
       try {
-        for await (const event of sendMessage(sessionId, content, attachments, isResearch)) {
+        for await (const event of sendMessage(sessionId, content, attachments, triggerResearch, toolPreference)) {
           if (event.type === "chunk" && event.content) {
             streamingContentRef.current += event.content;
             setStreaming({ sessionId, content: streamingContentRef.current });
@@ -210,6 +224,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         removeSession,
         setActiveSession,
         send,
+        switchSessionMode,
       }}
     >
       {children}

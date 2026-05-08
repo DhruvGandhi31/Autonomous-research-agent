@@ -141,12 +141,15 @@ export default function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-border">
-        <p className="text-xs text-text-muted text-center">
-          Powered by{" "}
-          <span className="text-accent-light font-medium">llama3.1</span> via Ollama
-        </p>
-      </div>
+<div className="px-4 py-3 border-t border-border">
+  <p className="text-xs text-text-muted text-center">
+    Powered by{" "}
+    <span className="text-accent-light font-medium">llama3.1</span> via Ollama
+  </p>
+  <p className="text-xs text-text-muted text-center mt-1">
+    Designed & built by Dhruv Gandhi
+  </p>
+</div>
     </aside>
   );
 }

@@ -63,11 +63,17 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = True
 
+    # CORS (overridable via CORS_ORIGINS env var)
+    cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
     # Web crawler
     max_crawl_depth: int = 3
     crawl_delay: float = 1.0
     user_agent: str = "ResearchAgent/1.0"
     max_requests_per_minute: int = 60
+
+    # External APIs
+    serpapi_key: str = ""   # enables Google Scholar in academic_search
 ```
 
 **`.env` example** (`backend/.env`):
@@ -76,6 +82,12 @@ OLLAMA_BASE_URL=http://localhost:11434
 DEFAULT_MODEL=llama3.1:8b
 API_PORT=8000
 DEBUG=True
+
+# Optional: add staging domain to allowed origins
+# CORS_ORIGINS=["http://localhost:3000","https://staging.example.com"]
+
+# Optional: Google Scholar via SerpApi
+# SERPAPI_KEY=your_key_here
 ```
 
 ---
@@ -96,7 +108,7 @@ On **shutdown**:
 
 ### CORS
 
-Allows all methods from `http://localhost:3000` and `http://127.0.0.1:3000` (Next.js dev server).
+Origins are read from `settings.cors_origins` (default: `localhost:3000` and `127.0.0.1:3000`). Override at runtime by setting `CORS_ORIGINS` in `backend/.env` — no code change needed.
 
 ### Registered Routes
 
@@ -195,6 +207,22 @@ Returns the full report, citations, confidence score, verified flag, and a dedup
 Sends a structured prompt to `llm_service.generate()` (temperature 0.3) asking the LLM to produce a JSON research plan. The JSON is then parsed and each task is assigned a UUID.
 
 **Prompt instructs the LLM to use only three tool names**: `web_search`, `academic_search`, `summarizer`.
+
+### Tool preference hint
+
+If `requirements` contains a `tool_preference` key, an additional instruction is appended to the planning prompt before it is sent to the LLM:
+
+```
+IMPORTANT: The user prefers '{tool_preference}' as the primary tool.
+Prioritize tasks that use '{tool_preference}'. You may still include one
+complementary tool if needed.
+```
+
+| `tool_preference` value | Set by frontend chip |
+|---|---|
+| `"web_search"` | 🌐 Web Search |
+| `"academic_search"` | 📚 Academic |
+| `""` (empty) | 🔬 Full Research or 💬 Chat |
 
 ### Plan Schema
 
@@ -632,13 +660,25 @@ ToolResult.summaries = [first 500 chars of each detailed result]
 **File**: `tools/academic_search.py`  
 **Singleton**: `academic_search_tool`
 
-Queries three academic sources concurrently using `asyncio.gather()`:
+Queries up to four academic sources concurrently using `asyncio.gather()`:
 
 | Source | API | Notes |
 |---|---|---|
-| arXiv | `export.arxiv.org/api/query` (XML) | Returns title, authors, summary, published date |
+| arXiv | `export.arxiv.org/api/query` (XML) | 3-attempt retry loop; reads `Retry-After` header on 429 |
 | Semantic Scholar | `api.semanticscholar.org/graph/v1/paper/search` | Returns title, authors, year, abstract, citationCount |
 | Wikipedia | `en.wikipedia.org/api/rest_v1/page/summary/{topic}` | Returns title, extract, URL |
+| Google Scholar | SerpApi `serpapi.com/search?engine=google_scholar` | Only active when `settings.serpapi_key` is non-empty |
+
+**Default sources** are built dynamically:
+```python
+default_sources = ["arxiv", "semantic_scholar", "wikipedia"]
+if settings.serpapi_key:
+    default_sources.append("google_scholar")
+```
+
+This means `google_scholar` is silently skipped when no API key is configured — no errors, no empty results.
+
+**arXiv 429 handling**: up to 3 attempts. On each 429 response the tool reads the `Retry-After` header (defaults to `5 × attempt` seconds if absent). Network errors wait 3 seconds between retries (matches arXiv's recommended inter-call delay).
 
 Academic sources are assigned a `credibility_boost` of 5 `keyword_hits` in the indexing stage, giving them higher credibility scores.
 
@@ -735,8 +775,19 @@ See the full [API Reference](./api-reference.md#research-endpoints) for request/
             "size": 204800
         }
     ],
-    "trigger_research": false
+    "trigger_research": false,
+    "tool_preference": ""
 }
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `content` | `string` | — | User message (1–32,000 chars) |
+| `attachments` | `array` | `[]` | Pre-uploaded file payloads |
+| `trigger_research` | `boolean` | `false` | Force research pipeline for this message |
+| `tool_preference` | `string` | `""` | Hint passed to TaskPlanner: `"web_search"`, `"academic_search"`, or `""` for free choice |
+
+When `tool_preference` is set and `trigger_research` is true (or session is research mode), the planner appends an explicit instruction to prioritise that tool.
 ```
 
 **Response**: `Content-Type: text/event-stream`

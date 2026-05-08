@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, Loader2 } from "lucide-react";
+import { Bot, Loader2, MessageSquare, FlaskConical } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useResearch } from "@/hooks/useResearch";
 import MessageBubble from "./MessageBubble";
@@ -12,7 +13,7 @@ import ResearchReport from "@/components/research/ResearchReport";
 import type { ChatMessage } from "@/lib/types";
 
 export default function ChatArea() {
-  const { activeSession, streaming, pendingResearchId, send } = useChatContext();
+  const { activeSession, streaming, pendingResearchId, send, switchSessionMode } = useChatContext();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,15 +41,40 @@ export default function ChatArea() {
   return (
     <div className="flex-1 flex flex-col bg-bg-primary overflow-hidden">
       {/* Header */}
-      <div className="shrink-0 flex items-center gap-3 px-5 py-3.5 border-b border-border bg-bg-secondary">
+      <div className="shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-border bg-bg-secondary">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-text-primary truncate">
             {activeSession.title}
           </h2>
-          <p className="text-xs text-text-muted capitalize">
-            {activeSession.mode} mode
-          </p>
         </div>
+        <button
+          onClick={() =>
+            switchSessionMode(activeSession.mode === "chat" ? "research" : "chat")
+          }
+          title={
+            activeSession.mode === "chat"
+              ? "Switch to Research mode (full pipeline)"
+              : "Switch to Chat mode (direct LLM)"
+          }
+          className={cn(
+            "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors shrink-0",
+            activeSession.mode === "research"
+              ? "bg-accent/10 border-accent/30 text-accent-light hover:bg-accent/20"
+              : "bg-bg-tertiary border-border text-text-muted hover:text-text-secondary hover:border-border-light"
+          )}
+        >
+          {activeSession.mode === "research" ? (
+            <>
+              <FlaskConical className="w-3 h-3" />
+              Research
+            </>
+          ) : (
+            <>
+              <MessageSquare className="w-3 h-3" />
+              Chat
+            </>
+          )}
+        </button>
       </div>
 
       {/* Messages */}

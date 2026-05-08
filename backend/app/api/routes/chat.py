@@ -38,6 +38,7 @@ class SendMessageRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=32_000)
     attachments: list[AttachmentIn] = Field(default_factory=list)
     trigger_research: bool = False
+    tool_preference: str = ""  # "web_search" | "academic_search" | "" (full pipeline)
 
 
 class CreateSessionRequest(BaseModel):
@@ -161,7 +162,7 @@ async def send_message(
     # Research mode: kick off research pipeline
     if session.mode == "research" or req.trigger_research:
         return await _handle_research_stream(
-            session_id, req.content, background_tasks
+            session_id, req.content, background_tasks, req.tool_preference
         )
 
     # Build message history for LLM
@@ -197,10 +198,12 @@ async def send_message(
 
 
 async def _handle_research_stream(
-    session_id: str, topic: str, background_tasks: BackgroundTasks
+    session_id: str, topic: str, background_tasks: BackgroundTasks, tool_preference: str = ""
 ):
     research_id = f"research_{uuid.uuid4().hex[:12]}"
-    requirements = {"max_sources": 10, "include_academic": True, "include_analysis": True}
+    requirements: dict = {"max_sources": 10, "include_academic": True, "include_analysis": True}
+    if tool_preference:
+        requirements["tool_preference"] = tool_preference
 
     await memory_manager.store_context(
         research_id,

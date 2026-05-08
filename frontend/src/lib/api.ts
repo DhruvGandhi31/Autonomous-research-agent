@@ -67,7 +67,8 @@ export async function* sendMessage(
   sessionId: string,
   content: string,
   attachments: FileAttachment[] = [],
-  triggerResearch = false
+  triggerResearch = false,
+  toolPreference = ""
 ): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${API_BASE}/chat/sessions/${sessionId}/messages`, {
     method: "POST",
@@ -76,6 +77,7 @@ export async function* sendMessage(
       content,
       attachments,
       trigger_research: triggerResearch,
+      tool_preference: toolPreference,
     }),
   });
 

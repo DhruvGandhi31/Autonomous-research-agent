@@ -67,10 +67,19 @@ Be specific and actionable. Focus on finding authoritative sources and diverse p
             
             # Prepare requirements string
             req_str = json.dumps(requirements) if requirements else "None specified"
-            
+
+            # Build optional tool-preference hint
+            tool_hint = ""
+            if requirements and requirements.get("tool_preference"):
+                pref = requirements["tool_preference"]
+                tool_hint = (
+                    f"\n\nIMPORTANT: The user prefers '{pref}' as the primary tool. "
+                    f"Prioritize tasks that use '{pref}'. You may still include one complementary tool if needed."
+                )
+
             # Generate plan using LLM
             plan_response = await llm_service.generate(
-                prompt=self.planning_prompt.format(topic=topic, requirements=req_str),
+                prompt=self.planning_prompt.format(topic=topic, requirements=req_str) + tool_hint,
                 system_prompt="You are an expert research planner. Create detailed, actionable research plans.",
                 temperature=0.3  # Lower temperature for more consistent planning
             )

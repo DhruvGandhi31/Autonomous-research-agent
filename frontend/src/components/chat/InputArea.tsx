@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   useCallback,
+  useEffect,
   type KeyboardEvent,
   type ChangeEvent,
 } from "react";
@@ -15,13 +16,17 @@ import {
   Image,
   FileText,
   AlertCircle,
+  MessageSquare,
+  Globe,
+  BookOpen,
+  FlaskConical,
 } from "lucide-react";
 import { cn, formatBytes, isImageFile, isDocumentFile } from "@/lib/utils";
 import { uploadImage, uploadDocument } from "@/lib/api";
-import type { FileAttachment } from "@/lib/types";
+import type { FileAttachment, ToolMode } from "@/lib/types";
 
 interface InputAreaProps {
-  onSend: (content: string, attachments: FileAttachment[]) => void;
+  onSend: (content: string, attachments: FileAttachment[], toolMode: ToolMode) => void;
   disabled?: boolean;
   mode: "chat" | "research";
 }
@@ -34,11 +39,26 @@ interface PendingFile {
   error?: string;
 }
 
+const TOOL_MODES: { mode: ToolMode; label: string; icon: React.ElementType; description: string }[] = [
+  { mode: "chat",       label: "Chat",          icon: MessageSquare, description: "Direct LLM response" },
+  { mode: "web_search", label: "Web Search",    icon: Globe,         description: "Search the web" },
+  { mode: "academic",   label: "Academic",      icon: BookOpen,      description: "arXiv · Semantic Scholar · Wikipedia" },
+  { mode: "research",   label: "Full Research", icon: FlaskConical,  description: "All tools + RAG synthesis" },
+];
+
 export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
   const [text, setText] = useState("");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const defaultTool: ToolMode = mode === "research" ? "research" : "chat";
+  const [selectedTool, setSelectedTool] = useState<ToolMode>(defaultTool);
+
+  // Sync default chip when session mode changes (e.g. header toggle or session switch)
+  useEffect(() => {
+    setSelectedTool(mode === "research" ? "research" : "chat");
+  }, [mode]);
 
   const isUploading = pendingFiles.some((f) => f.status === "uploading");
   const canSend = text.trim().length > 0 && !disabled && !isUploading;
@@ -68,9 +88,10 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
     const attachments = pendingFiles
       .filter((f) => f.status === "ready" && f.attachment)
       .map((f) => f.attachment!);
-    onSend(content, attachments);
+    onSend(content, attachments, selectedTool);
     setText("");
     setPendingFiles([]);
+    setSelectedTool(defaultTool);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
 
@@ -136,6 +157,8 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
     setPendingFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
+  const activeToolMeta = TOOL_MODES.find((t) => t.mode === selectedTool)!;
+
   return (
     <div className="border-t border-border bg-bg-secondary px-4 py-3">
       {/* Pending files */}
@@ -153,6 +176,28 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
           ))}
         </div>
       )}
+
+      {/* Tool mode chips */}
+      <div className="flex items-center gap-1.5 mb-2">
+        {TOOL_MODES.map(({ mode: tm, label, icon: Icon }) => (
+          <button
+            key={tm}
+            type="button"
+            onClick={() => setSelectedTool(tm)}
+            disabled={disabled}
+            title={TOOL_MODES.find((t) => t.mode === tm)?.description}
+            className={cn(
+              "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors border",
+              selectedTool === tm
+                ? "bg-accent border-accent text-white"
+                : "bg-bg-tertiary border-border text-text-muted hover:text-text-secondary hover:border-border-light disabled:opacity-40"
+            )}
+          >
+            <Icon className="w-3 h-3" />
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Input row */}
       <div className="flex items-end gap-2">
@@ -185,9 +230,13 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
             onKeyDown={handleKeyDown}
             disabled={disabled}
             placeholder={
-              mode === "research"
-                ? "Enter a research topic..."
-                : "Ask anything... (Shift+Enter for newline)"
+              selectedTool === "chat"
+                ? "Ask anything... (Shift+Enter for newline)"
+                : selectedTool === "web_search"
+                  ? "Search the web for..."
+                  : selectedTool === "academic"
+                    ? "Search academic papers for..."
+                    : "Enter a research topic..."
             }
             rows={1}
             className={cn(
@@ -220,10 +269,11 @@ export default function InputArea({ onSend, disabled, mode }: InputAreaProps) {
         </button>
       </div>
 
-      <p className="text-xs text-text-muted text-center mt-2">
-        {mode === "research"
-          ? "Research mode: each message starts a full research pipeline"
-          : "Chat mode · Shift+Enter for newline"}
+      <p className="text-xs text-text-muted mt-2">
+        <span className="font-medium text-accent-light">{activeToolMeta.label}</span>
+        {" · "}
+        {activeToolMeta.description}
+        {selectedTool !== "chat" && " · results appear below message"}
       </p>
     </div>
   );

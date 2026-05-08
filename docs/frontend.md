@@ -144,6 +144,19 @@ The `.prose` class is customized for dark mode: white headings, indigo links, pu
 
 **File**: `src/lib/types.ts`
 
+### Tool mode
+
+```typescript
+type ToolMode = "chat" | "web_search" | "academic" | "research";
+```
+
+| Value | Behavior |
+|---|---|
+| `"chat"` | Direct LLM response — no tools invoked |
+| `"web_search"` | Research pipeline, TaskPlanner biased toward `web_search` |
+| `"academic"` | Research pipeline, TaskPlanner biased toward `academic_search` |
+| `"research"` | Full autonomous pipeline — planner picks tools freely |
+
 ### Core interfaces
 
 ```typescript
@@ -161,8 +174,8 @@ interface ChatMessage {
     content: string;
     timestamp: string;          // ISO 8601
     attachments: FileAttachment[];
-    research_id?: string;       // set when this message triggered research
-    sources?: Citation[];
+    research_id?: string | null;  // set when this message triggered research
+    sources?: Citation[] | null;
 }
 
 interface ChatSession {
@@ -270,11 +283,14 @@ async function* sendMessage(
     sessionId: string,
     content: string,
     attachments: FileAttachment[],
-    triggerResearch: boolean
+    triggerResearch: boolean,
+    toolPreference: string        // "web_search" | "academic_search" | ""
 ): AsyncGenerator<StreamEvent>
 ```
 
 Uses the Fetch API with `response.body.getReader()` for incremental SSE parsing. Handles incomplete lines by keeping a `buffer` across read calls.
+
+`toolPreference` is forwarded as `tool_preference` in the request body and hints to the backend TaskPlanner which tool to prioritise. An empty string lets the planner decide freely.
 
 **SSE parsing loop:**
 ```typescript
@@ -347,18 +363,36 @@ The single source of truth for all UI state. Wraps the entire app via `ChatProvi
 | `openSession(id)` | Fetch full session and set as active |
 | `newChat(mode?)` | Create a new session (default mode: `"chat"`) |
 | `removeSession(id)` | Delete session; clears active if it was active |
-| `send(content, attachments?)` | Full send flow (see below) |
+| `send(content, attachments?, toolMode?)` | Full send flow (see below) |
+| `switchSessionMode(mode)` | Toggle active session between `"chat"` and `"research"` locally |
+
+### Tool mode mapping (`TOOL_CONFIG`)
+
+Defined at module scope and used inside `send()`:
+
+```typescript
+const TOOL_CONFIG: Record<ToolMode, { triggerResearch: boolean; toolPreference: string }> = {
+    chat:       { triggerResearch: false, toolPreference: "" },
+    web_search: { triggerResearch: true,  toolPreference: "web_search" },
+    academic:   { triggerResearch: true,  toolPreference: "academic_search" },
+    research:   { triggerResearch: true,  toolPreference: "" },
+};
+```
+
+`switchSessionMode` updates `activeSession.mode` in local React state only — it does not persist to the backend. The change resets when the user navigates to another session.
 
 ### `send()` Flow
 
-1. Optimistically adds the user message to `activeSession.messages`
-2. Sets `streaming` state with empty content
-3. Iterates `sendMessage()` async generator:
+1. Resolves `toolMode` — uses the passed argument; falls back to `"research"` if session is research mode, else `"chat"`
+2. Looks up `{ triggerResearch, toolPreference }` from `TOOL_CONFIG`
+3. Optimistically adds the user message to `activeSession.messages`
+4. Sets `streaming` state with empty content
+5. Iterates `sendMessage(sessionId, content, attachments, triggerResearch, toolPreference)`:
    - `chunk` events: appends to `streamingContentRef.current`, updates `streaming.content`
    - `research_started`: sets `pendingResearchId`
    - `done`: clears `streaming`, appends `event.message` to messages; clears `pendingResearchId` if not a research message
    - `error`: clears `streaming`, adds error message
-4. Calls `loadSessions()` to refresh sidebar
+6. Calls `loadSessions()` to refresh sidebar
 
 ### Research Completion Polling
 
@@ -459,6 +493,21 @@ The main content area. Shows one of three states:
 2. **Empty active session** — `WelcomeScreen` component
 3. **Session with messages** — scrollable message list + input
 
+### Header
+
+```
+┌──────────────────────────────────────────────┐
+│ Session Title                   [💬 Chat ▾]  │  ← mode toggle pill
+└──────────────────────────────────────────────┘
+```
+
+The mode toggle pill (right side of header) shows the current session mode. Clicking it calls `switchSessionMode()` in `ChatContext` to flip between `"chat"` and `"research"`. The toggle is purely a local UI state change — it updates the default chip selection in `InputArea` without persisting to the backend.
+
+| Mode badge | Appearance |
+|---|---|
+| Chat | Gray pill — `MessageSquare` icon |
+| Research | Indigo pill — `FlaskConical` icon |
+
 ### MessageWithResearch (inner component)
 
 Each message is wrapped in `MessageWithResearch`, which calls `useResearch(message.research_id)` and conditionally renders:
@@ -548,27 +597,58 @@ Shows inline citation cards for `message.sources`. Limited to 3 by default with 
 **File**: `src/components/chat/InputArea.tsx`
 
 ```
-┌───────────────────────────────────────┐
-│ [📄 report.pdf 2MB ×]                  │  ← pending file chips
-├────────────────────────────────────────┤
-│ [📎]  [Textarea ...]            [➤]   │
-├────────────────────────────────────────┤
-│  Chat mode · Shift+Enter for newline   │  ← context hint
-└────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ [📄 report.pdf 2MB ×]                         │  ← pending file chips (if any)
+├──────────────────────────────────────────────┤
+│ [💬 Chat] [🌐 Web Search] [📚 Academic] [🔬 Full Research] │  ← tool mode chips
+├──────────────────────────────────────────────┤
+│ [📎]  [Textarea ...]                   [➤]  │
+├──────────────────────────────────────────────┤
+│  Web Search · Search the web · results appear below message │  ← status hint
+└──────────────────────────────────────────────┘
 ```
+
+### Tool Mode Chips
+
+Four pill buttons select the tool mode for the **next message**. The active chip is highlighted in accent color.
+
+| Chip | `ToolMode` | Trigger | Planner hint |
+|---|---|---|---|
+| 💬 Chat | `"chat"` | Direct LLM | None |
+| 🌐 Web Search | `"web_search"` | Research pipeline | Prefer `web_search` |
+| 📚 Academic | `"academic"` | Research pipeline | Prefer `academic_search` |
+| 🔬 Full Research | `"research"` | Research pipeline | Free choice |
+
+**Default chip** is determined by the session mode: `"chat"` sessions default to `Chat`, `"research"` sessions default to `Full Research`. The default resets after each message send.
+
+The default also resets when the session changes (via a `useEffect` that depends on the `mode` prop), so switching sessions or toggling the header mode badge always brings chips back in sync.
 
 ### Textarea Behaviour
 
 - Auto-resizes (height calculated from `scrollHeight`)
 - Maximum height: 200px (overflows with scroll)
 - `Enter` → submit; `Shift+Enter` → newline
-- Placeholder text changes based on session mode
+- Placeholder text adapts to the selected tool chip:
+  - Chat → "Ask anything..."
+  - Web Search → "Search the web for..."
+  - Academic → "Search academic papers for..."
+  - Full Research → "Enter a research topic..."
+
+### Props
+
+```typescript
+interface InputAreaProps {
+    onSend: (content: string, attachments: FileAttachment[], toolMode: ToolMode) => void;
+    disabled?: boolean;
+    mode: "chat" | "research";   // sets the default chip
+}
+```
 
 ### File Upload Flow
 
 1. User clicks the paperclip icon → `<input type="file" hidden>` is programmatically clicked
 2. Accepted types: images (JPEG/PNG/GIF/WEBP) and documents (PDF/DOCX/DOC/TXT)
-3. Multiple files can be selected at once
+3. Multiple files upload in **parallel** via `Promise.all`
 4. Each file gets a `PendingFile` entry with `status: "uploading"`
 5. `isImageFile()` / `isDocumentFile()` routes to `uploadImage()` or `uploadDocument()`
 6. On success: `status: "ready"`, `attachment` field populated
@@ -673,19 +753,20 @@ The references section renders each citation with: `[N]` index, title (linked), 
 ## 17. Data Flow — Sending a Chat Message
 
 ```
-User types "What is RLHF?" and presses Enter
+User selects "💬 Chat" chip, types "What is RLHF?", presses Enter
         │
 InputArea.submit()
-  ├── Calls ChatContext.send("What is RLHF?", [])
-  └── Clears textarea
+  ├── Calls ChatContext.send("What is RLHF?", [], "chat")
+  └── Clears textarea; resets chip to session default
 
-ChatContext.send()
-  ├── 1. Optimistically add user ChatMessage to activeSession.messages
-  ├── 2. Set streaming = { sessionId, content: "" }
-  ├── 3. for await (event of sendMessage(sessionId, "What is RLHF?", []))
+ChatContext.send(content, [], "chat")
+  ├── 1. Resolve toolMode → TOOL_CONFIG["chat"] = { triggerResearch: false, toolPreference: "" }
+  ├── 2. Optimistically add user ChatMessage to activeSession.messages
+  ├── 3. Set streaming = { sessionId, content: "" }
+  ├── 4. for await (event of sendMessage(sessionId, content, [], false, ""))
   │     ├── chunk events → append to streaming.content (triggers re-render)
   │     └── done event  → clear streaming, add assistant ChatMessage to messages
-  └── 4. loadSessions() to refresh sidebar title
+  └── 5. loadSessions() to refresh sidebar title
 
 ChatArea renders:
   ├── All historical messages via MessageBubble
@@ -723,23 +804,32 @@ Backend chat route:
 
 ## 19. Data Flow — Research Mode
 
+Tool modes other than `"chat"` all trigger the research pipeline. The difference is what hint is sent to the TaskPlanner.
+
 ```
-User creates session with mode: "research"
-User types "Climate change mitigation 2024"
+User selects "📚 Academic" chip, types "Transformer architecture 2024"
         │
-ChatContext.send() → trigger_research: true (because mode === "research")
+InputArea.submit()
+  └── ChatContext.send("Transformer architecture 2024", [], "academic")
+
+ChatContext.send(content, [], "academic")
+  ├── TOOL_CONFIG["academic"] = { triggerResearch: true, toolPreference: "academic_search" }
+  └── sendMessage(sessionId, content, [], true, "academic_search")
         │
-Backend /api/chat/sessions/{id}/messages
+Backend POST /api/chat/sessions/{id}/messages
+  ├── trigger_research: true  →  _handle_research_stream()
+  │     requirements = { max_sources: 10, tool_preference: "academic_search" }
   ├── Creates research_id = "research_abc123"
-  ├── Stores initial context in MemoryManager
-  ├── Adds BackgroundTask: research_agent.conduct_research("Climate change...", ...)
+  ├── Stores context in MemoryManager
+  ├── BackgroundTask: research_agent.conduct_research(topic, requirements, research_id)
+  │     └── TaskPlanner receives tool_preference → LLM prompt appends:
+  │           "Prioritize tasks that use 'academic_search'"
   └── SSE stream:
-        data: {"type":"research_started","research_id":"research_abc123"}
+        data: {"type":"research_started","research_id":"research_abc123","topic":"..."}
         data: {"type":"done","message":{...,"research_id":"research_abc123"}}
 
 ChatContext receives:
-  ├── research_started → setPendingResearchId("research_abc123")
-  │     → input disabled
+  ├── research_started → setPendingResearchId("research_abc123") → input disabled
   └── done → add assistant message (with research_id) to session
 
 ChatArea renders MessageWithResearch for the assistant message:
@@ -753,3 +843,9 @@ ChatArea renders MessageWithResearch for the assistant message:
 ChatContext pendingResearchId polling:
   └── Also polls every 3s → when "complete", setPendingResearchId(null) → input re-enabled
 ```
+
+The same flow applies to `"web_search"` (hint: `"web_search"`) and `"research"` (no hint — planner decides freely).
+
+### Header Mode Toggle
+
+Clicking the mode badge in the chat header calls `switchSessionMode("research")` or `switchSessionMode("chat")`. This updates `activeSession.mode` locally, which causes `InputArea`'s `useEffect` to reset the default chip. It does **not** make a backend request — the session's server-side mode is unchanged.
